@@ -28,5 +28,5 @@ with open('letter_frequency.csv', 'w', newline='') as csvfile:
             letter,
             letter_total[letter],
             letter_word_occurrence[letter],
-            f"{frequency:.5f}%"
+            frequency
         ])

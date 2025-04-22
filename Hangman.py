@@ -1,5 +1,16 @@
 import random
 import pandas as pd
+import time
+
+def checkWordContainsVowel(word):
+    vowels = {'a', 'e', 'i', 'o', 'u'}
+    word = word.lower()
+
+    for letter in word:
+        if letter in vowels:
+            return True
+
+    return False
 
 def load_words():
     words = []
@@ -11,18 +22,23 @@ def load_words():
             parts = line.strip().split(',')
             if len(parts) != 2:
                 continue
-            word, freq = parts
-            if word.isalpha() and len(word) >= 3:
-                weight = float(freq)
 
+            word, freq = parts
+            if word.isalpha() and len(word) >= 3 and checkWordContainsVowel(word):
+                raw_freq = float(freq)
+
+                # Normalize relative to the lowest freq you found manually
+                weight = raw_freq / 12711
+
+                # Penalize high-frequency (common) words
                 if i < 30:
-                    continue  # Skip first 30 entries entirely
-                elif i < 400:
-                    weight *= (i / 400)  # Reduce weights drastically for 31–100
+                    weight = (i / 1000)  # Make them very low
+                elif i < 1000:
+                    weight *= (i / 1000)  # Gradual reduction for semi-common words
 
                 words.append(word.lower())
                 frequencies.append(weight)
-    
+
     return words, frequencies
 
     # --- Load and sort letter frequencies for bot logic ---
@@ -112,24 +128,60 @@ def update_game_board(attempts_remaining, guessed_letters, word_completion):
 
     # --- Bot guessing logic ---
 def get_bot_guess(guessed_letters):
+
     for letter in letter_ranking:
         if letter not in guessed_letters:
             return letter
     return None
 
+def get_best_letter_from_likely_word(word_completion, guessed_letters, words, frequencies):
+    possible = []
+
+    for word, weight in zip(words, frequencies):
+        if len(word) != len(word_completion):
+            continue
+        match = True
+        for wc, actual in zip(word_completion, word):
+            if wc != '_' and wc != actual:
+                match = False
+                break
+            if wc == '_' and actual in guessed_letters:
+                match = False
+                break
+        if match:
+            possible.append((word, weight))
+    
+    if not possible:
+        return None  # fallback to letter ranking?
+
+    # Sort by highest frequency
+    possible.sort(key=lambda x: x[1], reverse=True)
+    best_word = possible[0][0]
+
+    for letter in best_word:
+        if letter not in guessed_letters:
+            return letter
+
+    return None  # All letters already guessed
+
+
 # --- Main game logic ---
-def hangman(words, player_type):
-    word_to_guess = random.choice(words)
+def hangman(word, player_type, words, frequencies):
     guessed_letters = []
     attempts_remaining = MAX_ATTEMPTS
-    word_completion = "_" * len(word_to_guess)
+    word_completion = "_" * len(word)
 
     while attempts_remaining > 0 and "_" in word_completion:
         update_game_board(attempts_remaining, guessed_letters, word_completion)
 
         if player_type == 'bot':
-            guess = get_bot_guess(guessed_letters)
-            print(f"Bot guesses: {guess}")
+            if attempts_remaining <= 2:
+                guess = get_best_letter_from_likely_word(
+                    word_completion, guessed_letters, words, frequencies
+                )
+                print("Bot is guessing strategically! with letter:", guess)
+            else:
+                guess = get_bot_guess(guessed_letters)
         else:
             guess = input("Please guess a letter or type exit: ").lower()
             
@@ -148,36 +200,36 @@ def hangman(words, player_type):
         guessed_letters.append(guess)
         guessed_letters.sort()
 
-        if guess in word_to_guess:
+        if guess in word:
             print(f"Good guess! '{guess}' is in the word.")
         else:
             print(f"Sorry, '{guess}' is not in the word.")
             attempts_remaining -= 1
 
-        word_completion = "".join([letter if letter in guessed_letters else "_" for letter in word_to_guess])
+        word_completion = "".join([letter if letter in guessed_letters else "_" for letter in word])
 
     update_game_board(attempts_remaining, guessed_letters, word_completion)
 
     if "_" not in word_completion:
-        print(f"Congratulations! You guessed the word: {word_to_guess}")
+        print(f"Congratulations! You guessed the word: {word}")
     else:
-        print(f"Game over! The word was: {word_to_guess}")
+        print(f"Game over! The word was: {word}")
 
 # --- Game entry point ---
 def play_hangman():
+    print("Welcome to Hangman!")
+    time.sleep(1.5)
     print("Choose player type:")
     print("1. Human")
     print("2. Bot")
     player_input = input("Enter 1 or 2: ")
     player_type = 'bot' if player_input == '2' else 'human'
 
-    print("Welcome to Hangman!")
-
     words, frequencies = load_words()
-    # Pick a word weighted by frequency
+    print(f"Loaded {len(words)} words with frequencies.")
+    print
     word_to_guess = random.choices(words, weights=frequencies, k=1)[0]
 
-    hangman([word_to_guess], player_type)
-
+    hangman(word_to_guess, player_type, words, frequencies)
 # --- Run the game ---
 play_hangman()
