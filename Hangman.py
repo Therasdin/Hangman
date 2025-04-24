@@ -166,9 +166,10 @@ def get_best_letter_from_likely_word(word_completion, guessed_letters, words, fr
 
 
 # --- Main game logic ---
-def hangman(word, player_type, words, frequencies):
+def hangman(player_type, words, frequencies):
     guessed_letters = []
     attempts_remaining = MAX_ATTEMPTS
+    word= random.choices(words, weights=frequencies, k=1)[0]
     word_completion = "_" * len(word)
 
     while attempts_remaining > 0 and "_" in word_completion:
@@ -217,19 +218,43 @@ def hangman(word, player_type, words, frequencies):
 
 # --- Game entry point ---
 def play_hangman():
+    playAgain = True
+    words, frequencies = load_words()
+
+
     print("Welcome to Hangman!")
     time.sleep(1.5)
     print("Choose player type:")
     print("1. Human")
     print("2. Bot")
     player_input = input("Enter 1 or 2: ")
+    while player_input not in ['1', '2']:
+        print("Invalid input. Please enter 1 or 2.")
+        player_input = input("Enter 1 or 2: ")
     player_type = 'bot' if player_input == '2' else 'human'
 
-    words, frequencies = load_words()
-    print(f"Loaded {len(words)} words with frequencies.")
-    print
-    word_to_guess = random.choices(words, weights=frequencies, k=1)[0]
+    while (playAgain == True):
 
-    hangman(word_to_guess, player_type, words, frequencies)
-# --- Run the game ---
-play_hangman()
+        hangman(player_type, words, frequencies)
+
+        print ("Do you want to play again?")
+        print("Press 0 to exit, 1 to play again, or 2 to change player type")
+        num = input("Enter 0, 1, or 2: ")
+        while num not in ['0', '1', '2']:
+            print("Invalid input. Please enter 0, 1, or 2.")
+            num = input("Enter 0, 1, or 2: ")
+        if num == '1':
+            print("Starting a new game...")
+            time.sleep(1.5)
+        elif num == '0':
+            playAgain = False
+            print("Thanks for playing!")
+        elif num == '2':
+            print("Choose player type:")
+            print("1. Human")
+            print("2. Bot")
+            player_input = input("Enter 1 or 2: ")
+            player_type = 'bot' if player_input == '2' else 'human'
+
+        
+
