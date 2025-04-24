@@ -1,0 +1,259 @@
+
+import random
+import pandas as pd
+import time
+import torch
+from collections import defaultdict, Counter
+
+# --- Helper functions ---
+def checkWordContainsVowel(word):
+    vowels = {'a', 'e', 'i', 'o', 'u'}
+    return any(letter in vowels for letter in word.lower())
+
+def load_words():
+    words = []
+    frequencies = []
+    with open('unigram_freq.csv', 'r') as f:
+        next(f)
+        for i, line in enumerate(f):
+            parts = line.strip().split(',')
+            if len(parts) != 2:
+                continue
+            word, freq = parts
+            if word.isalpha() and len(word) >= 3 and checkWordContainsVowel(word):
+                raw_freq = float(freq)
+                weight = raw_freq / 12711
+                if i < 30:
+                    weight = i / 1000
+                elif i < 1000:
+                    weight *= i / 1000
+                words.append(word.lower())
+                frequencies.append(weight)
+    return words, frequencies
+
+def load_letter_ranking(filename='letter_frequency.csv'):
+    df = pd.read_csv(filename)
+    df = df.sort_values(by='Frequency', ascending=False)
+    return [row['Letter'].lower() for _, row in df.iterrows()]
+
+letter_ranking = load_letter_ranking()
+MAX_ATTEMPTS = 6
+
+stages = [
+    """
+      +---+
+      |   |
+          |
+          |
+          |
+          |
+    =========
+    """,
+    """
+      +---+
+      |   |
+      O   |
+          |
+          |
+          |
+    =========
+    """,
+    """
+      +---+
+      |   |
+      O   |
+      |   |
+          |
+          |
+    =========
+    """,
+    """
+      +---+
+      |   |
+      O   |
+     /|   |
+          |
+          |
+    =========
+    """,
+    """
+      +---+
+      |   |
+      O   |
+     /|\\  |
+          |
+          |
+    =========
+    """,
+    """
+      +---+
+      |   |
+      O   |
+     /|\\  |
+     /    |
+          |
+    =========
+    """,
+    """
+      +---+
+      |   |
+      O   |
+     /|\\  |
+     / \\  |
+          |
+    =========
+    """
+]
+
+def update_game_board(attempts_remaining, guessed_letters, word_completion):
+    stage_index = MAX_ATTEMPTS - attempts_remaining
+    stage_index = min(stage_index, len(stages) - 1)
+    print(stages[stage_index])
+    print(f"Word: {word_completion}")
+    print("Guessed letters:", " ".join(guessed_letters))
+    print(f"Attempts remaining: {attempts_remaining}")
+    print("-" * 20)
+
+def get_bot_guess(guessed_letters):
+    for letter in letter_ranking:
+        if letter not in guessed_letters:
+            return letter
+    return None
+
+def get_best_letter_from_likely_word(word_completion, guessed_letters, words, frequencies):
+    possible = []
+    for w, wt in zip(words, frequencies):
+        if len(w) != len(word_completion):
+            continue
+        match = True
+        for wc, c in zip(word_completion, w):
+            if (wc != '_' and wc != c) or (wc == '_' and c in guessed_letters):
+                match = False
+                break
+        if match:
+            possible.append((w, wt))
+    if not possible:
+        return None
+    possible.sort(key=lambda x: x[1], reverse=True)
+    for c in possible[0][0]:
+        if c not in guessed_letters:
+            return c
+    return None
+
+# --- AI Distribution by Word Length ---
+def train_ai_by_word_length(words):
+    length_freq = defaultdict(Counter)
+    for w in words:
+        length_freq[len(w)].update(set(w))
+    dist = {}
+    for length, ctr in length_freq.items():
+        total = sum(ctr.values())
+        vec = torch.zeros(26)
+        for letter, cnt in ctr.items():
+            vec[ord(letter) - ord('a')] = cnt / total
+        dist[length] = vec
+    return dist
+
+# --- AI Guess using Pattern + Length Distribution ---
+def get_ai_guess_from_distribution(dist_map, word_completion, guessed_letters, words, frequencies):
+    length = len(word_completion)
+    # Filter matching words
+    pattern_words = []
+    pattern_weights = []
+    for w, wt in zip(words, frequencies):
+        if len(w) != length:
+            continue
+        match = True
+        for wc, c in zip(word_completion, w):
+            if (wc != '_' and wc != c) or (wc == '_' and c in guessed_letters):
+                match = False
+                break
+        if match:
+            pattern_words.append(w)
+            pattern_weights.append(wt)
+    # Accumulate letter scores
+    letter_scores = {}
+    if pattern_words:
+        for w, wt in zip(pattern_words, pattern_weights):
+            for c in set(w):
+                if c not in guessed_letters:
+                    letter_scores[c] = letter_scores.get(c, 0) + wt
+    else:
+        vec = dist_map.get(length, torch.ones(26) / 26)
+        for i in range(26):
+            c = chr(i + ord('a'))
+            if c not in guessed_letters:
+                letter_scores[c] = vec[i].item()
+    if not letter_scores:
+        return None
+    return max(letter_scores, key=letter_scores.get)
+
+# --- Main Hangman Logic ---
+def hangman(word, player_type, words, frequencies):
+    guessed_letters = []
+    attempts_remaining = MAX_ATTEMPTS
+    word_completion = "_" * len(word)
+    ai_dist = train_ai_by_word_length(words) if player_type == 'ai' else None
+
+    while attempts_remaining > 0 and "_" in word_completion:
+        update_game_board(attempts_remaining, guessed_letters, word_completion)
+
+        if player_type == 'bot':
+            guess = get_best_letter_from_likely_word(word_completion, guessed_letters, words, frequencies) \
+                if attempts_remaining <= 2 else get_bot_guess(guessed_letters)
+            print("Bot guesses:", guess)
+        elif player_type == 'ai':
+            guess = get_ai_guess_from_distribution(ai_dist, word_completion, guessed_letters, words, frequencies)
+            print("AI guesses:", guess)
+        else:
+            guess = input("Please guess a letter or type exit: ").lower()
+
+        if guess == 'exit':
+            print("Exiting the game.")
+            return
+
+        if not guess or len(guess) != 1 or not guess.isalpha():
+            print("Invalid input. Please enter a single letter.")
+            continue
+
+        if guess in guessed_letters:
+            print("You've already guessed that letter. Try again.")
+            continue
+
+        guessed_letters.append(guess)
+        guessed_letters.sort()
+
+        if guess in word:
+            print(f"Good guess! '{guess}' is in the word.")
+        else:
+            print(f"Sorry, '{guess}' is not in the word.")
+            attempts_remaining -= 1
+
+        word_completion = "".join([c if c in guessed_letters else '_' for c in word])
+
+    update_game_board(attempts_remaining, guessed_letters, word_completion)
+
+    if "_" not in word_completion:
+        print(f"Congratulations! You guessed the word: {word}")
+    else:
+        print(f"Game over! The word was: {word}")
+
+# --- Entry Point ---
+def play_hangman():
+    print("Welcome to Hangman!")
+    time.sleep(1.5)
+    print("Choose player type:")
+    print("1. Human")
+    print("2. Bot")
+    print("3. AI")
+    player_input = input("Enter 1, 2, or 3: ")
+    player_type = {'1': 'human', '2': 'bot', '3': 'ai'}.get(player_input, 'human')
+
+    words, frequencies = load_words()
+    print(f"Loaded {len(words)} words with frequencies.")
+    word_to_guess = random.choices(words, weights=frequencies, k=1)[0]
+
+    hangman(word_to_guess, player_type, words, frequencies)
+
+# --- Run the game ---
+play_hangman()
