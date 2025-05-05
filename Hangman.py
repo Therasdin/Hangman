@@ -188,7 +188,7 @@ def hangman(player_type, words, frequencies):
             
         if guess == 'exit':
             print("Exiting the game.")
-            return
+            return 1
 
         if len(guess) != 1 or not guess.isalpha():
             print("Invalid input. Please enter a single letter.")
@@ -213,8 +213,10 @@ def hangman(player_type, words, frequencies):
 
     if "_" not in word_completion:
         print(f"Congratulations! You guessed the word: {word}")
+        return 0
     else:
         print(f"Game over! The word was: {word}")
+        return 1
 
 # --- Game entry point ---
 def play_hangman():

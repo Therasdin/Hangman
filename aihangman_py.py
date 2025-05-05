@@ -238,8 +238,10 @@ def hangman(word, player_type, words, frequencies):
     else:
         print(f"Game over! The word was: {word}")
 
-# --- Entry Point ---
 def play_hangman():
+    playAgain = True
+    words, frequencies = load_words()
+
     print("Welcome to Hangman!")
     time.sleep(1.5)
     print("Choose player type:")
@@ -247,13 +249,40 @@ def play_hangman():
     print("2. Bot")
     print("3. AI")
     player_input = input("Enter 1, 2, or 3: ")
-    player_type = {'1': 'human', '2': 'bot', '3': 'ai'}.get(player_input, 'human')
+    while player_input not in ['1', '2', '3']:
+        print("Invalid input. Please enter 1, 2, or 3.")
+        player_input = input("Enter 1, 2, or 3: ")
+    player_type = {'1': 'human', '2': 'bot', '3': 'ai'}[player_input]
 
-    words, frequencies = load_words()
-    print(f"Loaded {len(words)} words with frequencies.")
-    word_to_guess = random.choices(words, weights=frequencies, k=1)[0]
+    while playAgain:
+        word_to_guess = random.choices(words, weights=frequencies, k=1)[0]
+        hangman(word_to_guess, player_type, words, frequencies)
 
-    hangman(word_to_guess, player_type, words, frequencies)
+
+        print("Do you want to play again?")
+        print("Press 0 to exit, 1 to play again, or 2 to change player type")
+        num = input("Enter 0, 1, or 2: ")
+        while num not in ['0', '1', '2']:
+            print("Invalid input. Please enter 0, 1, or 2.")
+            num = input("Enter 0, 1, or 2: ")
+
+        if num == '1':
+            print("Starting a new game...")
+            time.sleep(1.5)
+        elif num == '0':
+            playAgain = False
+            print("Thanks for playing!")
+        elif num == '2':
+            print("Choose player type:")
+            print("1. Human")
+            print("2. Bot")
+            print("3. AI")
+            player_input = input("Enter 1, 2, or 3: ")
+            while player_input not in ['1', '2', '3']:
+                print("Invalid input. Please enter 1, 2, or 3.")
+                player_input = input("Enter 1, 2, or 3: ")
+            player_type = {'1': 'human', '2': 'bot', '3': 'ai'}[player_input]
+
 
 # --- Run the game ---
 play_hangman()
