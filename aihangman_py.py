@@ -3,6 +3,7 @@ import random
 import pandas as pd
 import time
 import torch
+import sys
 from collections import defaultdict, Counter
 
 # --- Helper functions ---
@@ -189,14 +190,15 @@ def get_ai_guess_from_distribution(dist_map, word_completion, guessed_letters, w
     return max(letter_scores, key=letter_scores.get)
 
 # --- Main Hangman Logic ---
-def hangman(word, player_type, words, frequencies):
+def hangman(player_type, words, frequencies, ai_dist):
     guessed_letters = []
     attempts_remaining = MAX_ATTEMPTS
+    word = random.choices(words, weights=frequencies, k=1)[0]
     word_completion = "_" * len(word)
-    ai_dist = train_ai_by_word_length(words) if player_type == 'ai' else None
 
     while attempts_remaining > 0 and "_" in word_completion:
-        update_game_board(attempts_remaining, guessed_letters, word_completion)
+        if player_type != 'batch_bot':
+            update_game_board(attempts_remaining, guessed_letters, word_completion)
 
         if player_type == 'bot':
             guess = get_best_letter_from_likely_word(word_completion, guessed_letters, words, frequencies) \
@@ -205,12 +207,19 @@ def hangman(word, player_type, words, frequencies):
         elif player_type == 'ai':
             guess = get_ai_guess_from_distribution(ai_dist, word_completion, guessed_letters, words, frequencies)
             print("AI guesses:", guess)
-        else:
+        elif player_type == 'human':
             guess = input("Please guess a letter or type exit: ").lower()
-
+        else:
+            guess = get_ai_guess_from_distribution(ai_dist, word_completion, guessed_letters, words, frequencies)
         if guess == 'exit':
             print("Exiting the game.")
-            return
+            return {
+                "word": word,
+                "won": 0,
+                "word_length": len(word),
+                "attempts_used": MAX_ATTEMPTS - attempts_remaining,
+                "total_guesses": len(guessed_letters)
+            }
 
         if not guess or len(guess) != 1 or not guess.isalpha():
             print("Invalid input. Please enter a single letter.")
@@ -224,19 +233,33 @@ def hangman(word, player_type, words, frequencies):
         guessed_letters.sort()
 
         if guess in word:
-            print(f"Good guess! '{guess}' is in the word.")
+            if player_type != 'batch_bot':
+                print(f"Good guess! '{guess}' is in the word.")
         else:
-            print(f"Sorry, '{guess}' is not in the word.")
+            if player_type != 'batch_bot':
+                print(f"Sorry, '{guess}' is not in the word.")
             attempts_remaining -= 1
 
-        word_completion = "".join([c if c in guessed_letters else '_' for c in word])
+        word_completion = "".join([letter if letter in guessed_letters else "_" for letter in word])
 
-    update_game_board(attempts_remaining, guessed_letters, word_completion)
+    if player_type != 'batch_bot':
+        update_game_board(attempts_remaining, guessed_letters, word_completion)
 
-    if "_" not in word_completion:
-        print(f"Congratulations! You guessed the word: {word}")
-    else:
-        print(f"Game over! The word was: {word}")
+    won = int("_" not in word_completion)
+    if player_type != 'batch_bot':
+        if won:
+            print(f"Congratulations! You guessed the word: {word}")
+        else:
+            print(f"Game over! The word was: {word}")
+
+    return {
+        "word": word,
+        "won": won,
+        "word_length": len(word),
+        "attempts_used": MAX_ATTEMPTS - attempts_remaining,
+        "total_guesses": len(guessed_letters)
+    }
+
 
 def play_hangman():
     playAgain = True
@@ -248,40 +271,70 @@ def play_hangman():
     print("1. Human")
     print("2. Bot")
     print("3. AI")
-    player_input = input("Enter 1, 2, or 3: ")
-    while player_input not in ['1', '2', '3']:
+    print("4. Batch AI")
+    player_input = input("Enter 1, 2, 3, or 4: ")
+    while player_input not in ['1', '2', '3','4']:
         print("Invalid input. Please enter 1, 2, or 3.")
-        player_input = input("Enter 1, 2, or 3: ")
-    player_type = {'1': 'human', '2': 'bot', '3': 'ai'}[player_input]
+        player_input = input("Enter 1, 2, 3, or 4: ")
+    player_type = {'1': 'human', '2': 'bot', '3': 'ai', '4': 'batch_bot'}[player_input]
+    ai_dist = train_ai_by_word_length(words) if player_type == 'ai' else None
+
 
     while playAgain:
-        word_to_guess = random.choices(words, weights=frequencies, k=1)[0]
-        hangman(word_to_guess, player_type, words, frequencies)
+        if player_type == 'batch_bot':
+            num_games = int(input("Enter the number of games to run (default is 50,000): ") or 50000)
+            while num_games <= 0:
+                print("Invalid input. Please enter a positive number.")
+                num_games = int(input("Enter the number of games to run (default is 50,000): ") or 50000)
+            print("Running " + str(num_games) + " bot games...")
+            results = []
+            
+            for i in range(num_games):
+                game_data = hangman(player_type, words, frequencies, ai_dist)
+                results.append(game_data)
+                
+                if i % (num_games/100) == 0:
+                    percent = (i / num_games) * 100
+                    sys.stdout.write(f"\rProgress: {percent:.1f}%")
+                    sys.stdout.flush()
 
+            df = pd.DataFrame(results)
+            win_rate = df["won"].mean()
 
-        print("Do you want to play again?")
-        print("Press 0 to exit, 1 to play again, or 2 to change player type")
-        num = input("Enter 0, 1, or 2: ")
-        while num not in ['0', '1', '2']:
-            print("Invalid input. Please enter 0, 1, or 2.")
-            num = input("Enter 0, 1, or 2: ")
+            print("Batch run complete.")
+            print(f"Total wins: {df['won'].sum()} out of " + str(num_games) + " games.")
+            print(f"Win rate: {win_rate:.4f}")
 
-        if num == '1':
-            print("Starting a new game...")
-            time.sleep(1.5)
-        elif num == '0':
+            # Save to CSV
+            df.to_csv("hangmanAI_batch_results.csv", index=False)
+            print("Results saved to hangman_batch_results.csv")
+
             playAgain = False
-            print("Thanks for playing!")
-        elif num == '2':
-            print("Choose player type:")
-            print("1. Human")
-            print("2. Bot")
-            print("3. AI")
-            player_input = input("Enter 1, 2, or 3: ")
-            while player_input not in ['1', '2', '3']:
-                print("Invalid input. Please enter 1, 2, or 3.")
+        else:
+            hangman(player_type, words, frequencies, ai_dist)
+
+            print("Do you want to play again?")
+            print("Press 0 to exit, 1 to play again, or 2 to change player type")
+            num = input("Enter 0, 1, or 2: ")
+            while num not in ['0', '1', '2']:
+                print("Invalid input. Please enter 0, 1, or 2.")
+                num = input("Enter 0, 1, or 2: ")
+
+            if num == '1':
+                print("Starting a new game...")
+            elif num == '0':
+                playAgain = False
+                print("Thanks for playing!")
+            elif num == '2':
+                print("Choose player type:")
+                print("1. Human")
+                print("2. Bot")
+                print("3. AI")
                 player_input = input("Enter 1, 2, or 3: ")
-            player_type = {'1': 'human', '2': 'bot', '3': 'ai'}[player_input]
+                while player_input not in ['1', '2', '3']:
+                    print("Invalid input. Please enter 1, 2, or 3.")
+                    player_input = input("Enter 1, 2, or 3: ")
+                player_type = {'1': 'human', '2': 'bot', '3': 'ai'}[player_input]
 
 
 # --- Run the game ---
