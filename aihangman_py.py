@@ -195,6 +195,7 @@ def hangman(player_type, words, frequencies, ai_dist):
     attempts_remaining = MAX_ATTEMPTS
     word = random.choices(words, weights=frequencies, k=1)[0]
     word_completion = "_" * len(word)
+    ai_dist = train_ai_by_word_length(words) if (player_type == 'ai' or player_type == 'batch_bot') else None
 
     while attempts_remaining > 0 and "_" in word_completion:
         if player_type != 'batch_bot':
@@ -306,7 +307,7 @@ def play_hangman():
             print(f"Win rate: {win_rate:.4f}")
 
             # Save to CSV
-            df.to_csv("hangmanAI_batch_results.csv", index=False)
+            df.to_csv("hangmanAItest1_batch_results.csv", index=False)
             print("Results saved to hangman_batch_results.csv")
 
             playAgain = False
