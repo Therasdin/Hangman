@@ -190,7 +190,7 @@ def get_ai_guess_from_distribution(dist_map, word_completion, guessed_letters, w
     return max(letter_scores, key=letter_scores.get)
 
 # --- Main Hangman Logic ---
-def hangman(player_type, words, frequencies, ai_dist):
+def hangman(player_type, words, frequencies):
     guessed_letters = []
     attempts_remaining = MAX_ATTEMPTS
     word = random.choices(words, weights=frequencies, k=1)[0]
@@ -278,7 +278,6 @@ def play_hangman():
         print("Invalid input. Please enter 1, 2, or 3.")
         player_input = input("Enter 1, 2, 3, or 4: ")
     player_type = {'1': 'human', '2': 'bot', '3': 'ai', '4': 'batch_bot'}[player_input]
-    ai_dist = train_ai_by_word_length(words) if player_type == 'ai' else None
 
 
     while playAgain:
@@ -291,7 +290,7 @@ def play_hangman():
             results = []
             
             for i in range(num_games):
-                game_data = hangman(player_type, words, frequencies, ai_dist)
+                game_data = hangman(player_type, words, frequencies)
                 results.append(game_data)
                 
                 if i % (num_games/100) == 0:

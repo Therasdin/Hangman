@@ -318,3 +318,4 @@ def play_hangman():
                 player_input = input("Enter 1 or 2: ")
                 player_type = 'bot' if player_input == '2' else 'human'
 
+play_hangman()
